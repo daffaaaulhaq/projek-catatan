@@ -359,3 +359,113 @@
     padding-left: 1.5em;
     text-indent: -1.5em;
 }
+
+/* --- Penyesuaian Menu Item dengan Ikon --- */
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Jarak antara ikon dan teks */
+}
+.sidebar-footer .menu-item.active {
+    background-color: #dcdcdc;
+}
+
+/* --- Gaya untuk Tampilan Trash --- */
+.trash-view {
+    padding: 40px 80px;
+    height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.trash-view h2 {
+    margin-top: 0;
+}
+
+.trash-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 20px;
+}
+
+.trash-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-radius: 6px;
+    background-color: #f9f9f9;
+    margin-bottom: 10px;
+}
+
+.trash-list li.empty-trash {
+    justify-content: center;
+    color: #888;
+}
+
+.trash-item-name {
+    font-weight: 500;
+}
+
+.trash-item-actions button {
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-left: 10px;
+    font-weight: 500;
+}
+
+.btn-restore {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-delete-perm {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* --- Variabel Tema --- */
+:root {
+    --bg-color: #fff;
+    --text-color: #333;
+    --sidebar-bg: #f7f7f7;
+    --border-color: #e8e8e8;
+    --hover-bg: #e9e9e9;
+    --active-bg: #dcdcdc;
+}
+
+.dark-theme {
+    --bg-color: #1a1a1a;
+    --text-color: #e0e0e0;
+    --sidebar-bg: #252526;
+    --border-color: #3c3c3c;
+    --hover-bg: #333;
+    --active-bg: #444;
+}
+
+/* --- Penyesuaian agar menggunakan variabel --- */
+.app-container {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+.sidebar {
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+}
+.sidebar-header, .sidebar-fixed, .sidebar-footer {
+    border-color: var(--border-color);
+}
+.page-list li:hover, .menu-item:hover {
+    background-color: var(--hover-bg);
+}
+.page-list li.active, .sidebar-footer .menu-item.active {
+    background-color: var(--active-bg);
+}
+.main-content {
+    background-color: var(--bg-color);
+}
+.document-title {
+    color: var(--text-color);
+}

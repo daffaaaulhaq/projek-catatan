@@ -5,11 +5,15 @@ import { useNavigate } from 'react-router-dom';
 import { removeAuthToken } from '../services/authService';
 import 'react-quill/dist/quill.snow.css';
 import './AppLayout.css';
+import ConfirmationModal from '../components/ConfirmationModal';
+import SettingsModal from '../components/SettingsModal';
+import { Home, Settings, Trash2, LogOut } from 'lucide-react';
 
 // --- Definisi Tipe Data ---
 interface User { id: number; name: string; email: string; }
 interface PageSidebar { id: number; sidebar_name: string; }
 interface PageDetail extends PageSidebar { title: string; content: string; }
+interface TrashedPage { id: number; sidebar_name: string; trashed_at: string; }
 
 // =================================================================
 // --- KOMPONEN UTAMA: AppLayout ---
@@ -24,6 +28,19 @@ function AppLayout() {
     const quillRef = useRef<ReactQuill>(null);
     const navigate = useNavigate();
 
+    const [isTrashView, setIsTrashView] = useState(false);
+    const [trashedPages, setTrashedPages] = useState<TrashedPage[]>([]);
+
+    // State untuk modal konfirmasi
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalContent, setModalContent] = useState({ title: '', message: '' });
+    const [onConfirmAction, setOnConfirmAction] = useState<() => void>(() => {});
+
+    // --- State BARU untuk Settings ---
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+    // Ambil user & daftar halaman
     useEffect(() => {
         const userData = JSON.parse(localStorage.getItem('user') || 'null');
         setUser(userData);
@@ -33,8 +50,9 @@ function AppLayout() {
             .catch(() => setError("Gagal memuat daftar halaman."));
     }, []);
 
+    // Ambil detail halaman (hanya jika bukan trash view)
     useEffect(() => {
-        if (selectedPageId !== null) {
+        if (selectedPageId !== null && !isTrashView) {
             setIsLoading(true);
             setError(null);
             axios.get(`http://localhost:4000/api/pages/${selectedPageId}`)
@@ -44,8 +62,20 @@ function AppLayout() {
         } else {
             setCurrentPage(null);
         }
-    }, [selectedPageId]);
+    }, [selectedPageId, isTrashView]);
 
+    // Ambil halaman di trash view
+    useEffect(() => {
+        if (isTrashView) {
+            setIsLoading(true);
+            axios.get('http://localhost:4000/api/trash')
+                .then(res => setTrashedPages(res.data))
+                .catch(() => setError("Gagal memuat sampah."))
+                .finally(() => setIsLoading(false));
+        }
+    }, [isTrashView]);
+
+    // Auto save konten
     useEffect(() => {
         if (!currentPage) return;
         const handler = setTimeout(() => {
@@ -58,10 +88,31 @@ function AppLayout() {
         return () => clearTimeout(handler);
     }, [currentPage]);
 
+    // Efek BARU untuk mengubah tema
+    useEffect(() => {
+        document.body.className = '';
+        document.body.classList.add(`${theme}-theme`);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    // --- Fungsi Helper Modal ---
+    const openConfirmationModal = (title: string, message: string, onConfirm: () => void) => {
+        setModalContent({ title, message });
+        setOnConfirmAction(() => onConfirm);
+        setIsModalOpen(true);
+    };
+
+    // --- Handler ---
     const handleLogout = () => {
-        removeAuthToken();
-        localStorage.removeItem('user');
-        navigate('/login');
+        openConfirmationModal(
+            'Konfirmasi Logout',
+            'Apakah Anda yakin ingin logout?',
+            () => {
+                removeAuthToken();
+                localStorage.removeItem('user');
+                navigate('/login');
+            }
+        );
     };
 
     const handleAddPage = (name: string) => {
@@ -73,16 +124,43 @@ function AppLayout() {
     };
 
     const handleDeletePage = (pageId: number) => {
-        axios.delete(`http://localhost:4000/api/pages/${pageId}`).then(() => {
-            setPages(pages.filter(p => p.id !== pageId));
-            if (selectedPageId === pageId) setSelectedPageId(null);
+        openConfirmationModal(
+            'Pindahkan ke Sampah?',
+            'Halaman ini akan dipindahkan ke sampah dan akan dihapus permanen setelah 30 hari.',
+            () => {
+                axios.delete(`http://localhost:4000/api/pages/${pageId}`).then(() => {
+                    setPages(pages.filter(p => p.id !== pageId));
+                    if (selectedPageId === pageId) setSelectedPageId(null);
+                    setIsModalOpen(false);
+                });
+            }
+        );
+    };
+
+    const handleRestorePage = (pageId: number) => {
+        axios.post(`http://localhost:4000/api/trash/${pageId}/restore`).then(() => {
+            setTrashedPages(trashedPages.filter(p => p.id !== pageId));
+            axios.get('http://localhost:4000/api/pages').then(res => setPages(res.data));
         });
     };
-    
+
+    const handlePermanentDelete = (pageId: number) => {
+        openConfirmationModal(
+            'Hapus Permanen?',
+            'Tindakan ini tidak dapat diurungkan. Halaman akan dihapus selamanya.',
+            () => {
+                axios.delete(`http://localhost:4000/api/trash/${pageId}/permanent`).then(() => {
+                    setTrashedPages(trashedPages.filter(p => p.id !== pageId));
+                    setIsModalOpen(false);
+                });
+            }
+        );
+    };
+
     const handleContentChange = (content: string) => {
         if (currentPage) setCurrentPage({ ...currentPage, content });
     };
-  
+
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTitle = e.target.value;
         if (currentPage) {
@@ -96,17 +174,42 @@ function AppLayout() {
 
     return (
         <div className="app-container">
+            <ConfirmationModal
+                isOpen={isModalOpen}
+                title={modalContent.title}
+                message={modalContent.message}
+                onConfirm={onConfirmAction}
+                onCancel={() => setIsModalOpen(false)}
+            />
+
+            {/* Modal Settings */}
+            <SettingsModal
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                theme={theme}
+                onThemeChange={setTheme}
+            />
+
             <Sidebar
                 user={user}
                 pages={pages}
                 selectedPageId={selectedPageId}
-                onSelectPage={setSelectedPageId}
+                isTrashView={isTrashView}
+                onSelectPage={(id) => { setIsTrashView(false); setSelectedPageId(id); }}
+                onSelectTrash={() => { setIsTrashView(true); setSelectedPageId(null); }}
+                onOpenSettings={() => setIsSettingsOpen(true)}
                 onAddPage={handleAddPage}
                 onDeletePage={handleDeletePage}
                 onLogout={handleLogout}
             />
             <div className="main-content">
-                {isLoading ? (
+                {isTrashView ? (
+                    <TrashView 
+                        pages={trashedPages} 
+                        onRestore={handleRestorePage} 
+                        onDelete={handlePermanentDelete} 
+                    />
+                ) : isLoading ? (
                     <div className="placeholder"><h2>Memuat...</h2></div>
                 ) : error ? (
                     <div className="placeholder error"><h2>Error: {error}</h2></div>
@@ -125,15 +228,14 @@ function AppLayout() {
                         <p>Pilih halaman di sebelah kiri atau buat yang baru untuk memulai.</p>
                     </div>
                 )}
-                {currentPage && <FloatingMenu quillRef={quillRef} />}
+                {currentPage && !isTrashView && <FloatingMenu quillRef={quillRef} />}
             </div>
         </div>
     );
 }
 
-// --- Komponen Anak ---
-
-function Sidebar({ user, pages, selectedPageId, onSelectPage, onAddPage, onDeletePage, onLogout }: any) {
+// --- Komponen Sidebar ---
+function Sidebar({ user, pages, selectedPageId, isTrashView, onSelectPage, onSelectTrash, onOpenSettings, onAddPage, onDeletePage, onLogout }: any) {
     const [newPageName, setNewPageName] = useState('');
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -152,7 +254,7 @@ function Sidebar({ user, pages, selectedPageId, onSelectPage, onAddPage, onDelet
             </div>
             <div className="sidebar-fixed">
                 <input type="text" className="search-bar" placeholder="Cari..." />
-                <div className="home-button">Home</div>
+                <div className="home-button"><Home size={18}/> <span>Home</span></div>
             </div>
             <div className="sidebar-scrollable">
                 <form onSubmit={handleSubmit} className="add-page-form">
@@ -161,7 +263,7 @@ function Sidebar({ user, pages, selectedPageId, onSelectPage, onAddPage, onDelet
                 </form>
                 <ul className="page-list">
                     {pages.map((page: PageSidebar) => (
-                        <li key={page.id} className={selectedPageId === page.id ? 'active' : ''} onClick={() => onSelectPage(page.id)}>
+                        <li key={page.id} className={!isTrashView && selectedPageId === page.id ? 'active' : ''} onClick={() => onSelectPage(page.id)}>
                             {page.sidebar_name}
                             <button onClick={e => { e.stopPropagation(); onDeletePage(page.id); }} className="delete-page-btn">×</button>
                         </li>
@@ -169,13 +271,44 @@ function Sidebar({ user, pages, selectedPageId, onSelectPage, onAddPage, onDelet
                 </ul>
             </div>
             <div className="sidebar-footer">
-                <div className="menu-item">Setting</div>
-                <div className="menu-item" onClick={onLogout}>Logout</div>
+                <div className="menu-item" onClick={onOpenSettings}>
+                    <Settings size={18} /> <span>Setting</span>
+                </div>
+                <div className={`menu-item ${isTrashView ? 'active' : ''}`} onClick={onSelectTrash}>
+                    <Trash2 size={18} /> <span>Trash</span>
+                </div>
+                <div className="menu-item" onClick={onLogout}><LogOut size={18} /> <span>Logout</span></div>
             </div>
         </div>
     );
 }
 
+// --- Komponen Trash View ---
+function TrashView({ pages, onRestore, onDelete }: any) {
+    return (
+        <div className="trash-view">
+            <h2>Sampah</h2>
+            <p>Halaman di sini akan dihapus permanen setelah 30 hari.</p>
+            <ul className="trash-list">
+                {pages.length === 0 ? (
+                    <li className="empty-trash">Tempat sampah kosong.</li>
+                ) : (
+                    pages.map((page: TrashedPage) => (
+                        <li key={page.id}>
+                            <span className="trash-item-name">{page.sidebar_name}</span>
+                            <div className="trash-item-actions">
+                                <button onClick={() => onRestore(page.id)} className="btn-restore">Kembalikan</button>
+                                <button onClick={() => onDelete(page.id)} className="btn-delete-perm">Hapus</button>
+                            </div>
+                        </li>
+                    ))
+                )}
+            </ul>
+        </div>
+    );
+}
+
+// --- Komponen Editor ---
 function Editor({ page, onContentChange, onTitleChange, quillRef }: any) {
     return (
         <>
@@ -187,20 +320,13 @@ function Editor({ page, onContentChange, onTitleChange, quillRef }: any) {
     );
 }
 
-// --- KOMPONEN FloatingMenu YANG DIPERBARUI ---
+// --- Komponen FloatingMenu ---
 function FloatingMenu({ quillRef }: { quillRef: React.RefObject<ReactQuill> }) {
     const [isColorPaletteOpen, setIsColorPaletteOpen] = useState(false);
-    
-    // Palet warna yang lebih lengkap, meniru Google Docs
     const PRESET_COLORS = [
         '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff',
         '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff',
-        '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc',
-        '#dd7e6b', '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9', '#a4c2f4', '#9fc5e8', '#b4a7d6', '#d5a6bd',
-        '#cc4125', '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6d9eeb', '#6fa8dc', '#8e7cc3', '#c27ba0',
-        '#a61c00', '#cc0000', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3c78d8', '#3d85c6', '#674ea7', '#a64d79',
-        '#85200c', '#990000', '#b45f06', '#bf9000', '#38761d', '#134f5c', '#1155cc', '#0b5394', '#351c75', '#741b47',
-        '#5b0f00', '#660000', '#783f04', '#7f6000', '#274e13', '#0c343d', '#1c4587', '#073763', '#20124d'
+        '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc'
     ];
 
     const toggleFormat = (type: string) => {

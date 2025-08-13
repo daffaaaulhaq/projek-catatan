@@ -1,0 +1,87 @@
+.settings-modal {
+    text-align: left;
+    max-width: 500px;
+}
+
+.settings-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+}
+
+.settings-header h3 {
+    margin: 0;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+.close-btn:hover {
+    background-color: #f0f0f0;
+}
+
+.settings-section {
+    margin-bottom: 24px;
+}
+
+.settings-section h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: #333;
+}
+.settings-section p {
+    margin: 0;
+    font-size: 14px;
+    color: #777;
+}
+
+.theme-switcher {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.theme-options {
+    display: flex;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.theme-options button {
+    padding: 8px 16px;
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+}
+
+.theme-options button.active {
+    background-color: #e0e0e0;
+    font-weight: 500;
+}
+
+.btn-delete-account {
+    background-color: transparent;
+    color: #dc3545;
+    border: 1px solid #dc3545;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    margin-top: 12px;
+}
+.btn-delete-account:hover {
+    background-color: #dc3545;
+    color: white;
+}

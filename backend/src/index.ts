@@ -6,54 +6,37 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 // --- SETUP AWAL ---
-dotenv.config(); // Memuat variabel dari file .env
+dotenv.config();
 const app = express();
 const port = 4000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// Konfigurasi koneksi ke database MySQL Anda di Laragon
 const dbConfig = {
-    host: '127.0.0.1',
-    user: 'root',
-    password: '',
-    database: 'projek_catatan_db', // Pastikan nama database ini benar
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    host: '127.0.0.1', user: 'root', password: '', database: 'projek_catatan_db',
+    waitForConnections: true, connectionLimit: 10, queueLimit: 0
 };
-
-// Membuat "kolam" koneksi agar lebih efisien
 const pool = mysql.createPool(dbConfig);
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_jika_env_tidak_ada';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
 
-// --- MIDDLEWARE: Verifikasi Token JWT ---
-// Middleware ini akan melindungi rute yang membutuhkan login
 const authenticateToken = (req: any, res: any, next: any) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer TOKEN"
-
-    if (token == null) return res.sendStatus(401); // 401 Unauthorized: Tidak ada token
-
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token == null) return res.sendStatus(401);
     jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-        if (err) return res.sendStatus(403); // 403 Forbidden: Token tidak valid atau kedaluwarsa
-        req.user = user; // Simpan informasi user ke dalam objek request
-        next(); // Lanjutkan ke rute berikutnya
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
     });
 };
 
-// =================================================================
-// --- API RUTE AUTENTIKASI (Tidak Dilindungi) ---
-// =================================================================
-
-// POST /api/auth/register
+// --- API RUTE AUTENTIKASI ---
 app.post('/api/auth/register', async (req, res) => {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
         return res.status(400).json({ message: 'Semua field harus diisi' });
     }
     try {
-        // Enkripsi password sebelum disimpan
         const hashedPassword = await bcrypt.hash(password, 10);
         await pool.execute(
             'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
@@ -68,7 +51,6 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-// POST /api/auth/login
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -78,13 +60,11 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ message: 'Email atau password salah' });
         }
         const user = users[0];
-        // Bandingkan password yang diinput dengan yang ada di database
         const isPasswordMatch = await bcrypt.compare(password, user.password);
         if (!isPasswordMatch) {
             return res.status(401).json({ message: 'Email atau password salah' });
         }
 
-        // Buat token JWT jika login berhasil
         const accessToken = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '1d' });
         res.json({ accessToken, user: { id: user.id, name: user.name, email: user.email } });
 
@@ -93,22 +73,17 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// =================================================================
-// --- API RUTE HALAMAN (PAGES) - Dilindungi oleh AuthenticateToken ---
-// =================================================================
 
-// GET /api/pages (Hanya mendapatkan halaman milik user yang login)
+// --- API RUTE HALAMAN (PAGES) ---
+
 app.get('/api/pages', authenticateToken, async (req: any, res) => {
     const userId = req.user.id;
     try {
-        const [rows] = await pool.execute('SELECT id, sidebar_name FROM pages WHERE user_id = ? ORDER BY updated_at DESC', [userId]);
+        const [rows] = await pool.execute('SELECT id, sidebar_name FROM pages WHERE user_id = ? AND is_trashed = FALSE ORDER BY updated_at DESC', [userId]);
         res.json(rows);
-    } catch (error) {
-        res.status(500).json({ message: 'Gagal mengambil halaman', error });
-    }
+    } catch (error) { res.status(500).json({ message: 'Gagal mengambil halaman', error }); }
 });
 
-// GET /api/pages/:id (Hanya bisa mengambil detail halaman milik user yang login)
 app.get('/api/pages/:id', authenticateToken, async (req: any, res) => {
     const userId = req.user.id;
     const pageId = parseInt(req.params.id, 10);
@@ -125,7 +100,6 @@ app.get('/api/pages/:id', authenticateToken, async (req: any, res) => {
     }
 });
 
-// POST /api/pages
 app.post('/api/pages', authenticateToken, async (req: any, res) => {
     const userId = req.user.id;
     const { name } = req.body;
@@ -141,19 +115,18 @@ app.post('/api/pages', authenticateToken, async (req: any, res) => {
     }
 });
 
-// PUT /api/pages/:id
 app.put('/api/pages/:id', authenticateToken, async (req: any, res) => {
     const userId = req.user.id;
     const pageId = parseInt(req.params.id, 10);
-    const { title, content } = req.body;
+    const { title, content, sidebar_name } = req.body;
     try {
         const [result] = await pool.execute(
-            'UPDATE pages SET title = ?, content = ? WHERE id = ? AND user_id = ?',
-            [title, content, pageId, userId]
+            'UPDATE pages SET title = ?, content = ?, sidebar_name = ? WHERE id = ? AND user_id = ?',
+            [title, content, sidebar_name, pageId, userId]
         );
         const updateResult = result as any;
         if (updateResult.affectedRows === 0) {
-             return res.status(404).json({ message: 'Halaman tidak ditemukan atau Anda tidak punya akses' });
+            return res.status(404).json({ message: 'Halaman tidak ditemukan atau Anda tidak punya akses' });
         }
         res.status(200).json({ message: 'Halaman berhasil disimpan' });
     } catch (error) {
@@ -161,24 +134,53 @@ app.put('/api/pages/:id', authenticateToken, async (req: any, res) => {
     }
 });
 
-// DELETE /api/pages/:id
 app.delete('/api/pages/:id', authenticateToken, async (req: any, res) => {
     const userId = req.user.id;
     const pageId = parseInt(req.params.id, 10);
     try {
-        const [result] = await pool.execute('DELETE FROM pages WHERE id = ? AND user_id = ?', [pageId, userId]);
-        const deleteResult = result as any;
-        if (deleteResult.affectedRows === 0) {
-             return res.status(404).json({ message: 'Halaman tidak ditemukan atau Anda tidak punya akses' });
+        const [result] = await pool.execute(
+            'UPDATE pages SET is_trashed = TRUE, trashed_at = NOW() WHERE id = ? AND user_id = ?',
+            [pageId, userId]
+        );
+        const updateResult = result as any;
+        if (updateResult.affectedRows === 0) {
+             return res.status(404).json({ message: 'Halaman tidak ditemukan' });
         }
         res.status(204).send();
-    } catch (error) {
-        res.status(500).json({ message: 'Gagal menghapus halaman', error });
-    }
+    } catch (error) { res.status(500).json({ message: 'Gagal memindahkan ke sampah', error }); }
+});
+
+
+// --- API BARU UNTUK TRASH ---
+
+app.get('/api/trash', authenticateToken, async (req: any, res) => {
+    const userId = req.user.id;
+    try {
+        const [rows] = await pool.execute('SELECT id, sidebar_name, trashed_at FROM pages WHERE user_id = ? AND is_trashed = TRUE ORDER BY trashed_at DESC', [userId]);
+        res.json(rows);
+    } catch (error) { res.status(500).json({ message: 'Gagal mengambil data sampah', error }); }
+});
+
+app.post('/api/trash/:id/restore', authenticateToken, async (req: any, res) => {
+    const userId = req.user.id;
+    const pageId = parseInt(req.params.id, 10);
+    try {
+        await pool.execute('UPDATE pages SET is_trashed = FALSE, trashed_at = NULL WHERE id = ? AND user_id = ?', [pageId, userId]);
+        res.status(200).json({ message: 'Halaman berhasil dikembalikan' });
+    } catch (error) { res.status(500).json({ message: 'Gagal mengembalikan halaman', error }); }
+});
+
+app.delete('/api/trash/:id/permanent', authenticateToken, async (req: any, res) => {
+    const userId = req.user.id;
+    const pageId = parseInt(req.params.id, 10);
+    try {
+        await pool.execute('DELETE FROM pages WHERE id = ? AND user_id = ? AND is_trashed = TRUE', [pageId, userId]);
+        res.status(204).send();
+    } catch (error) { res.status(500).json({ message: 'Gagal menghapus permanen', error }); }
 });
 
 
 // --- Menjalankan Server ---
 app.listen(port, () => {
-    console.log(`Backend server (v-FINAL) berjalan di http://localhost:${port}`);
+    console.log(`Backend server (v-FINAL-TRASH) berjalan di http://localhost:${port}`);
 });
