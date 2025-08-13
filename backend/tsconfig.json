@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "es6",                     // Kompilasi ke JavaScript versi ES6
+    "module": "commonjs",                // Gunakan sistem modul standar Node.js
+    "outDir": "./dist",                  // Simpan hasil kompilasi di folder 'dist'
+    "rootDir": "./src",                  // Sumber kode utama ada di folder 'src'
+    "strict": true,                      // Aktifkan semua aturan ketat TypeScript
+    "esModuleInterop": true,             // Memungkinkan interoperabilitas modul
+    "skipLibCheck": true,                // Lewati pemeriksaan tipe dari library
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"]                // Hanya kompilasi file di dalam folder 'src'
+}
