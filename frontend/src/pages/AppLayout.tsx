@@ -51,7 +51,8 @@ function AppLayout() {
         const handler = setTimeout(() => {
             axios.put(`http://localhost:4000/api/pages/${currentPage.id}`, {
                 title: currentPage.title,
-                content: currentPage.content
+                content: currentPage.content,
+                sidebar_name: currentPage.sidebar_name
             }).then(() => console.log(`Halaman ${currentPage.id} disimpan!`));
         }, 1500);
         return () => clearTimeout(handler);
@@ -83,7 +84,14 @@ function AppLayout() {
     };
   
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (currentPage) setCurrentPage({ ...currentPage, title: e.target.value });
+        const newTitle = e.target.value;
+        if (currentPage) {
+            const updatedPage = { ...currentPage, title: newTitle, sidebar_name: newTitle };
+            setCurrentPage(updatedPage);
+            setPages(pages.map(p =>
+                p.id === currentPage.id ? { ...p, sidebar_name: newTitle } : p
+            ));
+        }
     };
 
     return (
@@ -103,12 +111,14 @@ function AppLayout() {
                 ) : error ? (
                     <div className="placeholder error"><h2>Error: {error}</h2></div>
                 ) : currentPage ? (
-                    <Editor
-                        page={currentPage}
-                        onContentChange={handleContentChange}
-                        onTitleChange={handleTitleChange}
-                        quillRef={quillRef}
-                    />
+                    <div className="document-wrapper">
+                        <Editor
+                            page={currentPage}
+                            onContentChange={handleContentChange}
+                            onTitleChange={handleTitleChange}
+                            quillRef={quillRef}
+                        />
+                    </div>
                 ) : (
                     <div className="placeholder">
                         <h2>Selamat Datang, {user?.name}!</h2>
@@ -168,35 +178,119 @@ function Sidebar({ user, pages, selectedPageId, onSelectPage, onAddPage, onDelet
 
 function Editor({ page, onContentChange, onTitleChange, quillRef }: any) {
     return (
-        <div className="editor-area">
+        <>
             <input type="text" className="document-title" value={page.title} onChange={onTitleChange}/>
-            <ReactQuill ref={quillRef} theme="snow" value={page.content} onChange={onContentChange} modules={{ toolbar: false }} className="quill-editor"/>
-        </div>
+            <div className="editor-area">
+                <ReactQuill ref={quillRef} theme="snow" value={page.content} onChange={onContentChange} modules={{ toolbar: false }} className="quill-editor"/>
+            </div>
+        </>
     );
 }
 
+// --- KOMPONEN FloatingMenu YANG DIPERBARUI ---
 function FloatingMenu({ quillRef }: { quillRef: React.RefObject<ReactQuill> }) {
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const format = (type: string, value?: string | boolean) => {
+    const [isColorPaletteOpen, setIsColorPaletteOpen] = useState(false);
+    
+    // Palet warna yang lebih lengkap, meniru Google Docs
+    const PRESET_COLORS = [
+        '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#efefef', '#f3f3f3', '#ffffff',
+        '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff',
+        '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc',
+        '#dd7e6b', '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9', '#a4c2f4', '#9fc5e8', '#b4a7d6', '#d5a6bd',
+        '#cc4125', '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6d9eeb', '#6fa8dc', '#8e7cc3', '#c27ba0',
+        '#a61c00', '#cc0000', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3c78d8', '#3d85c6', '#674ea7', '#a64d79',
+        '#85200c', '#990000', '#b45f06', '#bf9000', '#38761d', '#134f5c', '#1155cc', '#0b5394', '#351c75', '#741b47',
+        '#5b0f00', '#660000', '#783f04', '#7f6000', '#274e13', '#0c343d', '#1c4587', '#073763', '#20124d'
+    ];
+
+    const toggleFormat = (type: string) => {
         const editor = quillRef.current?.getEditor();
         if (editor) {
-            editor.format(type, value === undefined ? true : value);
+            editor.focus();
+            const range = editor.getSelection();
+            const format = range ? editor.getFormat(range) : editor.getFormat();
+            editor.format(type, !format[type]);
+        }
+    };
+
+    const applyHighlight = (color: string) => {
+        const editor = quillRef.current?.getEditor();
+        if (editor) {
+            editor.focus();
+            const value = color === 'transparent' ? false : color;
+            editor.format('background', value);
+        }
+        setIsColorPaletteOpen(false);
+    };
+
+    const handleCustomColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const editor = quillRef.current?.getEditor();
+        if (editor) {
+            editor.focus();
+            editor.format('background', e.target.value);
+        }
+    };
+
+    const toggleListFormat = (type: 'bullet' | 'ordered') => {
+        const editor = quillRef.current?.getEditor();
+        if (editor) {
+            editor.focus();
+            const range = editor.getSelection();
+            if (range) {
+                const currentFormats = editor.getFormat(range);
+                const value = currentFormats.list === type ? false : type;
+                editor.formatLine(range.index, range.length, 'list', value);
+            }
         }
     };
 
     return (
-        <>
-            <div className={`floating-menu ${isMenuOpen ? 'open' : ''}`}>
-                <div className="menu-content">
-                    <button onClick={() => format('bold')}><b>B</b></button>
-                    <button onClick={() => format('italic')}><i>I</i></button>
-                    <button onClick={() => format('list', 'bullet')}>●</button>
-                    <button onClick={() => format('list', 'ordered')}>1.</button>
-                    <button onClick={() => format('list', 'check')}>✓</button>
+        <div className="floating-menu">
+            <div className="menu-content">
+                <div className="tooltip-container">
+                    <button onClick={() => toggleFormat('bold')}><b>B</b></button>
+                    <span className="tooltip-text">Bold</span>
+                </div>
+                <div className="tooltip-container">
+                    <button onClick={() => toggleFormat('italic')}><i>I</i></button>
+                    <span className="tooltip-text">Italic</span>
+                </div>
+                <div className="tooltip-container">
+                    <button onClick={() => setIsColorPaletteOpen(!isColorPaletteOpen)}>🖍️</button>
+                    <span className="tooltip-text">Highlight</span>
+                    {isColorPaletteOpen && (
+                        <div className="color-palette-popup">
+                            <div className="color-grid">
+                                <button className="color-swatch no-color" onClick={() => applyHighlight('transparent')}/>
+                                {PRESET_COLORS.map(color => (
+                                    <button 
+                                        key={color} 
+                                        className="color-swatch"
+                                        style={{ backgroundColor: color }}
+                                        onClick={() => applyHighlight(color)}
+                                    />
+                                ))}
+                            </div>
+                            <div className="custom-color-section">
+                                <div className="custom-color-label">KUSTOM</div>
+                                <label className="custom-color-picker">
+                                    +
+                                    <input type="color" onInput={handleCustomColorChange} />
+                                </label>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div className="tooltip-container">
+                    <button onClick={() => toggleListFormat('bullet')}>●</button>
+                    <span className="tooltip-text">Bullet List</span>
+                </div>
+                <div className="tooltip-container">
+                    <button onClick={() => toggleListFormat('ordered')}>1.</button>
+                    <span className="tooltip-text">Numbered List</span>
                 </div>
             </div>
-            <button className="floating-toggle" onClick={() => setIsMenuOpen(!isMenuOpen)}>⋮</button>
-        </>
+        </div>
     );
 }
 
